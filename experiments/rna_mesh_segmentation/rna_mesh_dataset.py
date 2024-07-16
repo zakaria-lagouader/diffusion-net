@@ -53,7 +53,7 @@ class RNAMeshDataset(Dataset):
         label_path = os.path.join(root_dir, "labels")
         for f in this_files:
             off_file = os.path.join(off_path, f)
-            label_file = os.path.join(label_path, f[:-4] + ".val")
+            label_file = os.path.join(label_path, f[:-4] + ".txt")
 
             verts, faces = pp3d.read_mesh(off_file)
             labels = np.loadtxt(label_file).astype(int) + 1 # shift -1 --> 0
