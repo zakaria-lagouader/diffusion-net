@@ -85,7 +85,7 @@ if not train:
 
 # === Optimize
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-huber = torch.nn.HuberLoss()
+huber = torch.nn.L1Loss()
 
 def train_epoch(epoch):
     # Implement lr decay
