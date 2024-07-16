@@ -34,7 +34,7 @@ k_eig = 128
 # training settings
 train = not args.evaluate
 n_epoch = 100
-lr = 1e-3
+lr = 1e-4
 decay_every = 50
 decay_rate = 0.5
 augment_random_rotate = (input_features == 'xyz')
