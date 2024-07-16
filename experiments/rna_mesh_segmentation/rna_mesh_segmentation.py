@@ -137,8 +137,7 @@ def train_epoch(epoch):
         loss.backward()
         
         # Track loss
-        this_loss = loss.item() * targets.shape[0]
-        total_loss += this_loss
+        total_loss += loss.item()
         total_num += 1
 
         # Step the optimizer
