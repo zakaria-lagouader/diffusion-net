@@ -33,7 +33,7 @@ k_eig = 128
 
 # training settings
 train = not args.evaluate
-n_epoch = 200
+n_epoch = 100
 lr = 1e-5
 decay_every = 50
 decay_rate = 0.5
@@ -85,7 +85,7 @@ if not train:
 
 # === Optimize
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-huber = torch.nn.L1Loss()
+loss_function = torch.nn.L1Loss()
 
 def train_epoch(epoch):
     # Implement lr decay
@@ -133,7 +133,7 @@ def train_epoch(epoch):
         targets = targets.float().to(device)  # Convert targets to float
 
         # Evaluate loss
-        loss = huber(preds, targets)
+        loss = loss_function(preds, targets)
         loss.backward()
         
         # Track loss
@@ -145,7 +145,7 @@ def train_epoch(epoch):
         optimizer.zero_grad()
 
     train_mse = total_loss / total_num
-    return train_mse
+    return train_mse, (preds.min(), preds.max())
 
 
 # Do an evaluation pass on the test dataset 
@@ -183,7 +183,7 @@ def test():
             targets = targets.float().to(device)  # Convert targets to float
 
             # Calculate MSE
-            mse = huber(preds, targets)
+            mse = loss_function(preds, targets)
             total_mse += mse.item()
             total_num += 1
 
@@ -194,9 +194,9 @@ if train:
     print("Training...")
 
     for epoch in range(n_epoch):
-        train_mse = train_epoch(epoch)
+        train_mse, bounds = train_epoch(epoch)
         test_mse = test()
-        print("Epoch {} - Train MSE: {}  Test MSE: {}".format(epoch, train_mse, test_mse))
+        print("Epoch {} - Train MSE: {}  Test MSE: {}  Min: {} Max: {}".format(epoch, train_mse, test_mse, bounds[0], bounds[1]))
 
     print(" ==> saving last model to " + model_save_path)
     torch.save(model.state_dict(), model_save_path)
