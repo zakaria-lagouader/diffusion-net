@@ -85,22 +85,22 @@ if not train:
 
 # === Optimize
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-loss_function = torch.nn.L1Loss()
+loss_function = torch.nn.MSELoss()
 
 def train_epoch(epoch):
+    global lr 
     # Implement lr decay
     if epoch > 0 and epoch % decay_every == 0:
-        global lr 
         lr *= decay_rate
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr 
 
     # Set model to 'train' mode
     model.train()
-    optimizer.zero_grad()
     
     total_loss = 0
     total_num = 0
+    
     for data in tqdm(train_loader):
         verts, faces, frames, mass, L, evals, evecs, gradX, gradY, targets = data
 
@@ -114,7 +114,7 @@ def train_epoch(epoch):
         evecs = evecs.to(device)
         gradX = gradX.to(device)
         gradY = gradY.to(device)
-        targets = targets.to(device)
+        targets = targets.float().to(device)
         
         # Randomly rotate positions
         if augment_random_rotate:
@@ -128,25 +128,27 @@ def train_epoch(epoch):
 
         # Apply the model
         preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
-
+        
         preds = preds.squeeze()  # Remove the extra dimension if present
-        targets = targets.float().to(device)  # Convert targets to float
+        
+        # Check shape consistency
+        if preds.shape != targets.shape:
+            preds = preds.view_as(targets)
 
         # Evaluate loss
         loss = loss_function(preds, targets)
+        
+        # Backpropagation
+        optimizer.zero_grad()
         loss.backward()
+        optimizer.step()
         
         # Track loss
         total_loss += loss.item()
         total_num += 1
 
-        # Step the optimizer
-        optimizer.step()
-        optimizer.zero_grad()
-
     train_mse = total_loss / total_num
-    return train_mse, (preds.min(), preds.max())
-
+    return train_mse, (preds.min().item(), preds.max().item())
 
 # Do an evaluation pass on the test dataset 
 def test():
@@ -168,7 +170,7 @@ def test():
             evecs = evecs.to(device)
             gradX = gradX.to(device)
             gradY = gradY.to(device)
-            targets = targets.to(device)
+            targets = targets.float().to(device)
             
             # Construct features
             if input_features == 'xyz':
@@ -180,7 +182,10 @@ def test():
             preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
 
             preds = preds.squeeze()  # Remove the extra dimension if present
-            targets = targets.float().to(device)  # Convert targets to float
+            
+            # Check shape consistency
+            if preds.shape != targets.shape:
+                preds = preds.view_as(targets)
 
             # Calculate MSE
             mse = loss_function(preds, targets)
@@ -188,7 +193,7 @@ def test():
             total_num += 1
 
     test_mse = total_mse / total_num
-    return test_mse 
+    return test_mse
 
 if train:
     print("Training...")
