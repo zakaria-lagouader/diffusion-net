@@ -130,7 +130,7 @@ def train_epoch(epoch):
         preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
 
         preds = preds.squeeze()  # Remove the extra dimension if present
-        targets = targets.float()  # Convert targets to float
+        targets = targets.float().to(device)  # Convert targets to float
 
         # Evaluate loss
         loss = huber(preds, targets)
@@ -138,9 +138,8 @@ def train_epoch(epoch):
         
         # Track loss
         this_loss = loss.item() * targets.shape[0]
-        this_num = targets.shape[0]
         total_loss += this_loss
-        total_num += this_num
+        total_num += 1
 
         # Step the optimizer
         optimizer.step()
@@ -182,12 +181,12 @@ def test():
             preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
 
             preds = preds.squeeze()  # Remove the extra dimension if present
-            targets = targets.float()  # Convert targets to float
+            targets = targets.float().to(device)  # Convert targets to float
 
             # Calculate MSE
             mse = huber(preds, targets)
             total_mse += mse.item()
-            total_num += targets.shape[0]
+            total_num += 1
 
     test_mse = total_mse / total_num
     return test_mse 
