@@ -1,0 +1,9 @@
+skeleton.ply
+vase.ply
+blade.ply
+cow.ply
+gargoyle.ply
+kitten.ply
+santa.ply
+skull.ply
+wrench.ply
