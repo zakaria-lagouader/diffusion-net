@@ -34,7 +34,7 @@ k_eig = 128
 # training settings
 train = not args.evaluate
 n_epoch = 200
-lr = 1e-4
+lr = 1e-5
 decay_every = 50
 decay_rate = 0.5
 augment_random_rotate = (input_features == 'xyz')
@@ -70,7 +70,7 @@ model = diffusion_net.layers.DiffusionNet(C_in=C_in,
                                           C_out=n_class,
                                           C_width=128, 
                                           N_block=4, 
-                                        #   last_activation=torch.nn.functional.sigmoid,
+                                          last_activation=torch.nn.Sigmoid(),
                                           outputs_at='vertices', 
                                           dropout=True)
 
@@ -85,7 +85,7 @@ if not train:
 
 # === Optimize
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-criterion = torch.nn.MSELoss()
+huber = torch.nn.HuberLoss()
 
 def train_epoch(epoch):
     # Implement lr decay
@@ -133,7 +133,7 @@ def train_epoch(epoch):
         targets = targets.float()  # Convert targets to float
 
         # Evaluate loss
-        loss = criterion(preds, targets)
+        loss = huber(preds, targets)
         loss.backward()
         
         # Track loss
@@ -185,7 +185,7 @@ def test():
             targets = targets.float()  # Convert targets to float
 
             # Calculate MSE
-            mse = criterion(preds, targets)
+            mse = huber(preds, targets)
             total_mse += mse.item()
             total_num += targets.shape[0]
 
