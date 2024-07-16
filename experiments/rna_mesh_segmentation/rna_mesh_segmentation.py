@@ -33,7 +33,7 @@ k_eig = 128
 
 # training settings
 train = not args.evaluate
-n_epoch = 100
+n_epoch = 200
 lr = 1e-4
 decay_every = 50
 decay_rate = 0.5
