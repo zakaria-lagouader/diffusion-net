@@ -121,6 +121,8 @@ def train_epoch(epoch):
         # Apply the model
         preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
 
+        preds = preds.squeeze()
+
         # Evaluate loss
         loss = criterion(preds, labels)
         loss.backward()
@@ -165,6 +167,8 @@ def test():
 
             # Apply the model
             preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
+
+            preds = preds.squeeze()
 
             # Evaluate loss
             loss = criterion(preds, labels)
