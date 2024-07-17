@@ -25,7 +25,7 @@ device = torch.device('cuda:0')
 dtype = torch.float32
 
 # problem/dataset things
-n_class = 100
+n_class = 1
 
 # model 
 input_features = args.input_features # one of ['xyz', 'hks']
@@ -34,7 +34,7 @@ k_eig = 128
 # training settings
 train = not args.evaluate
 n_epoch = 100
-lr = 1e-4
+lr = 1e-5
 decay_every = 50
 decay_rate = 0.5
 augment_random_rotate = (input_features == 'xyz')
@@ -70,60 +70,39 @@ model = diffusion_net.layers.DiffusionNet(C_in=C_in,
                                           C_out=n_class,
                                           C_width=128, 
                                           N_block=4, 
-                                          last_activation=lambda x : torch.nn.functional.log_softmax(x,dim=-1),
+                                          last_activation=torch.nn.Sigmoid(),
                                           outputs_at='vertices', 
                                           dropout=True)
 
 
 model = model.to(device)
 
-# if not train:
-#     # load the pretrained model
-#     print("Loading pretrained model from: " + str(pretrain_path))
-#     model.load_state_dict(torch.load(pretrain_path))
-
-# def check_labels(data_loader, n_classes):
-#     for data in data_loader:
-#         labels = data[-1]  # assuming labels are the last item in the tuple
-#         min_label, max_label = labels.min().item(), labels.max().item()
-#         if min_label < 0 or max_label >= n_classes:
-#             print(f"Invalid label found: min_label = {min_label}, max_label = {max_label}")
-#             return False
-#     return True
-
-# # Check labels for both train and test datasets
-# print("Checking train dataset labels...")
-# if train:
-#     if not check_labels(train_loader, n_class):
-#         raise ValueError("Train dataset contains invalid labels.")
-
-# print("Checking test dataset labels...")
-# if not check_labels(test_loader, n_class):
-#     raise ValueError("Test dataset contains invalid labels.")
+if not train:
+    # load the pretrained model
+    print("Loading pretrained model from: " + str(pretrain_path))
+    model.load_state_dict(torch.load(pretrain_path))
 
 
 # === Optimize
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+loss_function = torch.nn.MSELoss()
 
 def train_epoch(epoch):
-
+    global lr 
     # Implement lr decay
     if epoch > 0 and epoch % decay_every == 0:
-        global lr 
         lr *= decay_rate
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr 
 
-
     # Set model to 'train' mode
     model.train()
-    optimizer.zero_grad()
     
-    correct = 0
+    total_loss = 0
     total_num = 0
+    
     for data in tqdm(train_loader):
-
-        verts, faces, frames, mass, L, evals, evecs, gradX, gradY, labels = data
+        verts, faces, frames, mass, L, evals, evecs, gradX, gradY, targets = data
 
         # Move to device
         verts = verts.to(device)
@@ -135,7 +114,7 @@ def train_epoch(epoch):
         evecs = evecs.to(device)
         gradX = gradX.to(device)
         gradY = gradY.to(device)
-        labels = labels.to(device)
+        targets = targets.float().to(device)
         
         # Randomly rotate positions
         if augment_random_rotate:
@@ -149,40 +128,37 @@ def train_epoch(epoch):
 
         # Apply the model
         preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
-
-        print(preds.shape, labels.shape)
+        
+        preds = preds.squeeze()  # Remove the extra dimension if present
+        
+        # Check shape consistency
+        if preds.shape != targets.shape:
+            preds = preds.view_as(targets)
 
         # Evaluate loss
-        loss = torch.nn.functional.nll_loss(preds, labels)
-        loss.backward()
+        loss = loss_function(preds, targets)
         
-        # track accuracy
-        pred_labels = torch.max(preds, dim=1).indices
-        this_correct = pred_labels.eq(labels).sum().item()
-        this_num = labels.shape[0]
-        correct += this_correct
-        total_num += this_num
-
-        # Step the optimizer
-        optimizer.step()
+        # Backpropagation
         optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        # Track loss
+        total_loss += loss.item()
+        total_num += 1
 
-    train_acc = correct / total_num
-    return train_acc
-
+    train_mse = total_loss / total_num
+    return train_mse, (preds.min().item(), preds.max().item())
 
 # Do an evaluation pass on the test dataset 
 def test():
-    
     model.eval()
     
-    correct = 0
+    total_mse = 0
     total_num = 0
     with torch.no_grad():
-    
         for data in tqdm(test_loader):
-
-            verts, faces, frames, mass, L, evals, evecs, gradX, gradY, labels = data
+            verts, faces, frames, mass, L, evals, evecs, gradX, gradY, targets = data
 
             # Move to device
             verts = verts.to(device)
@@ -194,7 +170,7 @@ def test():
             evecs = evecs.to(device)
             gradX = gradX.to(device)
             gradY = gradY.to(device)
-            labels = labels.to(device)
+            targets = targets.float().to(device)
             
             # Construct features
             if input_features == 'xyz':
@@ -205,29 +181,31 @@ def test():
             # Apply the model
             preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
 
-            # track accuracy
-            pred_labels = torch.max(preds, dim=1).indices
-            this_correct = pred_labels.eq(labels).sum().item()
-            this_num = labels.shape[0]
-            correct += this_correct
-            total_num += this_num
+            preds = preds.squeeze()  # Remove the extra dimension if present
+            
+            # Check shape consistency
+            if preds.shape != targets.shape:
+                preds = preds.view_as(targets)
 
-    test_acc = correct / total_num
-    return test_acc 
+            # Calculate MSE
+            mse = loss_function(preds, targets)
+            total_mse += mse.item()
+            total_num += 1
 
+    test_mse = total_mse / total_num
+    return test_mse
 
 if train:
     print("Training...")
 
     for epoch in range(n_epoch):
-        train_acc = train_epoch(epoch)
-        test_acc = test()
-        print("Epoch {} - Train overall: {:06.3f}%  Test overall: {:06.3f}%".format(epoch, 100*train_acc, 100*test_acc))
+        train_mse, bounds = train_epoch(epoch)
+        test_mse = test()
+        print("Epoch {} - Train MSE: {}  Test MSE: {}  Min: {} Max: {}".format(epoch, train_mse, test_mse, bounds[0], bounds[1]))
 
     print(" ==> saving last model to " + model_save_path)
     torch.save(model.state_dict(), model_save_path)
 
-
 # Test
-test_acc = test()
-print("Overall test accuracy: {:06.3f}%".format(100*test_acc))
+test_mse = test()
+print("Overall test MSE: {}".format(test_mse))
