@@ -82,6 +82,25 @@ if not train:
     print("Loading pretrained model from: " + str(pretrain_path))
     model.load_state_dict(torch.load(pretrain_path))
 
+def check_labels(data_loader, n_classes):
+    for data in data_loader:
+        labels = data[-1]  # assuming labels are the last item in the tuple
+        min_label, max_label = labels.min().item(), labels.max().item()
+        if min_label < 0 or max_label >= n_classes:
+            print(f"Invalid label found: min_label = {min_label}, max_label = {max_label}")
+            return False
+    return True
+
+# Check labels for both train and test datasets
+print("Checking train dataset labels...")
+if train:
+    if not check_labels(train_loader, n_class):
+        raise ValueError("Train dataset contains invalid labels.")
+
+print("Checking test dataset labels...")
+if not check_labels(test_loader, n_class):
+    raise ValueError("Test dataset contains invalid labels.")
+
 
 # === Optimize
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
