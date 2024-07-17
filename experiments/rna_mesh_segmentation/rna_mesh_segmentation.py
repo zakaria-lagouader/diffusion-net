@@ -10,36 +10,32 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../../src/"))  # add th
 import diffusion_net
 from rna_mesh_dataset import RNAMeshDataset 
 
-
 # === Options
 
 # Parse a few args
 parser = argparse.ArgumentParser()
 parser.add_argument("--evaluate", action="store_true", help="evaluate using the pretrained model")
-parser.add_argument("--input_features", type=str, help="what features to use as input ('xyz' or 'hks') default: hks", default = 'xyz')
+parser.add_argument("--input_features", type=str, help="what features to use as input ('xyz' or 'hks') default: hks", default='xyz')
 args = parser.parse_args()
-
 
 # system things
 device = torch.device('cuda:0')
 dtype = torch.float32
 
 # problem/dataset things
-n_class = 1
+n_outputs = 1  # For regression, the number of output values per vertex
 
 # model 
-input_features = args.input_features # one of ['xyz', 'hks']
+input_features = args.input_features  # one of ['xyz', 'hks']
 k_eig = 128
 
 # training settings
 train = not args.evaluate
 n_epoch = 100
-lr = 1e-4
+lr = 1e-3
 decay_every = 50
 decay_rate = 0.5
 augment_random_rotate = (input_features == 'xyz')
-
-
 
 # Important paths
 base_path = os.path.dirname(__file__)
@@ -60,20 +56,17 @@ if train:
     train_dataset = RNAMeshDataset(dataset_path, train=True, k_eig=k_eig, use_cache=True, op_cache_dir=op_cache_dir)
     train_loader = DataLoader(train_dataset, batch_size=None, shuffle=True)
 
-
-
 # === Create the model
 
-C_in={'xyz':3, 'hks':16}[input_features] # dimension of input features
+C_in = {'xyz': 3, 'hks': 16}[input_features]  # dimension of input features
 
 model = diffusion_net.layers.DiffusionNet(C_in=C_in,
-                                          C_out=n_class,
+                                          C_out=n_outputs,
                                           C_width=128, 
                                           N_block=4, 
-                                        #   last_activation=torch.nn.Sigmoid(),
+                                          last_activation=None,  # No softmax for regression
                                           outputs_at='vertices', 
                                           dropout=True)
-
 
 model = model.to(device)
 
@@ -82,27 +75,26 @@ if not train:
     print("Loading pretrained model from: " + str(pretrain_path))
     model.load_state_dict(torch.load(pretrain_path))
 
-
 # === Optimize
 optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-loss_function = torch.nn.L1Loss()
+criterion = torch.nn.MSELoss()  # Use MSELoss for regression
 
 def train_epoch(epoch):
-    global lr 
     # Implement lr decay
     if epoch > 0 and epoch % decay_every == 0:
+        global lr 
         lr *= decay_rate
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr 
 
     # Set model to 'train' mode
     model.train()
+    optimizer.zero_grad()
     
-    total_loss = 0
+    total_loss = 0.0
     total_num = 0
-    
     for data in tqdm(train_loader):
-        verts, faces, frames, mass, L, evals, evecs, gradX, gradY, targets = data
+        verts, faces, frames, mass, L, evals, evecs, gradX, gradY, labels = data
 
         # Move to device
         verts = verts.to(device)
@@ -114,7 +106,7 @@ def train_epoch(epoch):
         evecs = evecs.to(device)
         gradX = gradX.to(device)
         gradY = gradY.to(device)
-        targets = targets.float().to(device)
+        labels = labels.to(device, dtype=torch.float32)  # For regression, labels should be float
         
         # Randomly rotate positions
         if augment_random_rotate:
@@ -128,37 +120,30 @@ def train_epoch(epoch):
 
         # Apply the model
         preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
-        
-        preds = preds.squeeze()  # Remove the extra dimension if present
-        
-        # Check shape consistency
-        if preds.shape != targets.shape:
-            preds = preds.view_as(targets)
 
         # Evaluate loss
-        loss = loss_function(preds, targets)
-        
-        # Backpropagation
-        optimizer.zero_grad()
+        loss = criterion(preds, labels)
         loss.backward()
-        optimizer.step()
         
-        # Track loss
-        total_loss += loss.item()
-        total_num += 1
+        total_loss += loss.item() * labels.size(0)  # Accumulate loss
+        total_num += labels.size(0)  # Accumulate number of samples
 
-    train_mse = total_loss / total_num
-    return train_mse, (preds.min().item(), preds.max().item())
+        # Step the optimizer
+        optimizer.step()
+        optimizer.zero_grad()
+
+    avg_loss = total_loss / total_num  # Compute average loss
+    return avg_loss
 
 # Do an evaluation pass on the test dataset 
 def test():
     model.eval()
     
-    total_mse = 0
+    total_loss = 0.0
     total_num = 0
     with torch.no_grad():
         for data in tqdm(test_loader):
-            verts, faces, frames, mass, L, evals, evecs, gradX, gradY, targets = data
+            verts, faces, frames, mass, L, evals, evecs, gradX, gradY, labels = data
 
             # Move to device
             verts = verts.to(device)
@@ -170,7 +155,7 @@ def test():
             evecs = evecs.to(device)
             gradX = gradX.to(device)
             gradY = gradY.to(device)
-            targets = targets.float().to(device)
+            labels = labels.to(device, dtype=torch.float32)  # For regression, labels should be float
             
             # Construct features
             if input_features == 'xyz':
@@ -181,31 +166,26 @@ def test():
             # Apply the model
             preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
 
-            preds = preds.squeeze()  # Remove the extra dimension if present
+            # Evaluate loss
+            loss = criterion(preds, labels)
             
-            # Check shape consistency
-            if preds.shape != targets.shape:
-                preds = preds.view_as(targets)
+            total_loss += loss.item() * labels.size(0)  # Accumulate loss
+            total_num += labels.size(0)  # Accumulate number of samples
 
-            # Calculate MSE
-            mse = loss_function(preds, targets)
-            total_mse += mse.item()
-            total_num += 1
-
-    test_mse = total_mse / total_num
-    return test_mse
+    avg_loss = total_loss / total_num  # Compute average loss
+    return avg_loss
 
 if train:
     print("Training...")
 
     for epoch in range(n_epoch):
-        train_mse, bounds = train_epoch(epoch)
-        test_mse = test()
-        print("Epoch {} - Train MSE: {}  Test MSE: {}  Min: {} Max: {}".format(epoch, train_mse, test_mse, bounds[0], bounds[1]))
+        train_loss = train_epoch(epoch)
+        test_loss = test()
+        print("Epoch {} - Train Loss: {:06.4f}  Test Loss: {:06.4f}".format(epoch, train_loss, test_loss))
 
     print(" ==> saving last model to " + model_save_path)
     torch.save(model.state_dict(), model_save_path)
 
 # Test
-test_mse = test()
-print("Overall test MSE: {}".format(test_mse))
+test_loss = test()
+print("Overall test loss: {:06.4f}".format(test_loss))
