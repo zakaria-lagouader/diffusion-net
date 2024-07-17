@@ -131,6 +131,8 @@ def train_epoch(epoch):
         # Apply the model
         preds = model(features, mass, L=L, evals=evals, evecs=evecs, gradX=gradX, gradY=gradY)
 
+        print(preds.shape, labels.shape)
+
         # Evaluate loss
         loss = torch.nn.functional.nll_loss(preds, labels)
         loss.backward()
