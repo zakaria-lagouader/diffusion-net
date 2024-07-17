@@ -56,7 +56,7 @@ class RNAMeshDataset(Dataset):
             label_file = os.path.join(label_path, f[:-4] + ".txt")
 
             verts, faces = pp3d.read_mesh(off_file)
-            labels = np.loadtxt(label_file).astype(int) # shift -1 --> 0
+            labels = np.loadtxt(label_file).astype(int) - 1 # shift -1 --> 0
         
             verts = torch.tensor(verts).float()
             faces = torch.tensor(faces)
