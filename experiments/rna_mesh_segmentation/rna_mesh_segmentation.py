@@ -32,7 +32,7 @@ k_eig = 128
 # training settings
 train = not args.evaluate
 n_epoch = 100
-lr = 1e-3
+lr = 1e-4
 decay_every = 50
 decay_rate = 0.5
 augment_random_rotate = (input_features == 'xyz')
@@ -40,7 +40,7 @@ augment_random_rotate = (input_features == 'xyz')
 # Important paths
 base_path = os.path.dirname(__file__)
 op_cache_dir = os.path.join(base_path, "data", "op_cache")
-pretrain_path = os.path.join(base_path, "pretrained_models/rna_mesh_seg_{}_4x128.pth".format(input_features))
+pretrain_path = os.path.join(base_path, "data/saved_models/sal_model-4.pth")
 model_save_path = os.path.join(base_path, "data/saved_models/sal_model.pth")
 dataset_path = os.path.join(base_path, "data/saliency_data")
 
@@ -127,8 +127,8 @@ def train_epoch(epoch):
         loss = criterion(preds, labels)
         loss.backward()
         
-        total_loss += loss.item() * labels.size(0)  # Accumulate loss
-        total_num += labels.size(0)  # Accumulate number of samples
+        total_loss += loss.item()  # Accumulate loss
+        total_num += 1  # Accumulate number of samples
 
         # Step the optimizer
         optimizer.step()
@@ -173,8 +173,8 @@ def test():
             # Evaluate loss
             loss = criterion(preds, labels)
             
-            total_loss += loss.item() * labels.size(0)  # Accumulate loss
-            total_num += labels.size(0)  # Accumulate number of samples
+            total_loss += loss.item()  # Accumulate loss
+            total_num += 1 # Accumulate number of samples
 
     avg_loss = total_loss / total_num  # Compute average loss
     return avg_loss
