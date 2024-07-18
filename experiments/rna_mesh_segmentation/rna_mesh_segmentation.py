@@ -71,7 +71,7 @@ model = diffusion_net.layers.DiffusionNet(C_in=C_in,
                                           C_width=128, 
                                           N_block=4, 
                                           last_activation=lambda x : torch.nn.functional.log_softmax(x,dim=-1),
-                                          outputs_at='vertices', 
+                                          outputs_at='faces', 
                                           dropout=True)
 
 
