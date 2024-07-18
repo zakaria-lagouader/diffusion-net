@@ -46,7 +46,7 @@ base_path = os.path.dirname(__file__)
 op_cache_dir = os.path.join(base_path, "data", "op_cache")
 pretrain_path = os.path.join(base_path, "data/saved_models/sal_model.pth")
 model_save_path = os.path.join(base_path, "data/saved_models/sal_model.pth")
-dataset_path = os.path.join(base_path, "data/saliency_data")
+dataset_path = os.path.join(base_path, "data/saliency_files")
 
 
 # === Load datasets

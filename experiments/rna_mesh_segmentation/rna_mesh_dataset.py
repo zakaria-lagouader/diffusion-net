@@ -49,7 +49,7 @@ class RNAMeshDataset(Dataset):
 
         # Load the actual files
 
-        off_path = os.path.join(root_dir, "ply")
+        off_path = os.path.join(root_dir, "obj")
         label_path = os.path.join(root_dir, "labels")
         for f in this_files:
             off_file = os.path.join(off_path, f)

@@ -1,0 +1,9 @@
+skeleton_decimated.obj
+vase_decimated.obj
+blade_decimated.obj
+cow_decimated.obj
+gargoyle_decimated.obj
+kitten_decimated.obj
+santa_decimated.obj
+skull_decimated.obj
+wrench_decimated.obj
